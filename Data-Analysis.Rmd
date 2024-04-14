@@ -1,0 +1,93 @@
+---
+title: "Data Preprocessing and Analysis"
+author: "Glauco Rampone, Francesca Eskina, Rongou Zhou, Chiara Cecutti,"
+date: "2024-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We want to answer four questions:
+
+
+- What is the total amount spent by the top 5-2-1% customers excluding NA values?
+- Are "gender" and "age" driving factors for being a VIP client?
+- What's the percentage of genZ in Marionnaud customers?
+- Are genZ more engaged in loylaty programs than previous generations without accounting for other cofactors?
+
+```{r}
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+original_directory <- "C:\\Users\\glauc\\Desktop\\data\\transactions_mit"
+setwd(original_directory)
+files <- list.files(pattern = "\\.csv$")
+csv_files <- files[str_detect(files, "\\.csv$")]
+transaction <- lapply(csv_files, read.csv) %>% bind_rows()
+```
+
+```{r}
+
+dir <- "C:\\Users\\glauc\\Desktop\\data\\dimensions"
+setwd(dir)
+files <- list.files(pattern = "\\.csv$")
+
+customer <- read.csv("customer_mit.csv")
+product <- read.csv("product_mit.csv")
+store <- read.csv("store_mit.csv")
+```
+
+```{r}
+# Group by customer_key and calculate the total amount for each customer
+total_amount_per_customer <- transaction %>%
+  group_by(customer_key) %>%
+  summarise(total_amount = sum(amount))
+
+# Sort the total amounts in decreasing order
+total_amount_per_customer <- total_amount_per_customer %>%
+  arrange(desc(total_amount))
+
+quantile(total_amount_per_customer$total_amount,0.95)
+quantile(total_amount_per_customer$total_amount,0.98)
+quantile(total_amount_per_customer$total_amount,0.99)
+```
+
+```{r}
+vip <- data.frame(vip = ifelse(total_amount_per_customer$total_amount > 393, 1, 0), customer_key = total_amount_per_customer$customer_key)
+head(vip)
+vip <- vip[complete.cases(vip), ]
+```
+
+```{r}
+# Merge the datasets
+vip_all <- merge(vip, customer, by = "customer_key")
+head(vip_all$birth_dt)
+vip_all <- vip_all[vip_all$birth_dt != "", ]
+vip_all$genz <- ifelse(year(vip_all$birth_dt) >= 1997 & year(vip_all$birth_dt) <= 2012, 1, 0)
+head(vip_all)
+```
+
+```{r}
+# Check for missing values
+sum(is.na(vip_all$birth_dt))
+logistic_model <- glm(vip ~ gender+genz, data = vip_all, family = binomial)
+summary(logistic_model)
+```
+
+```{r}
+#How many genZ?
+customer <- customer[customer$birth_dt != "", ]
+customer$genz <- ifelse(year(customer$birth_dt) >= 1997 & year(customer$birth_dt) <= 2012, 1, 0)
+mean(customer$genz)
+```
+
+```{r}
+#What the impacts on being genz on the total points?
+regression_model <- lm(points_earned ~ genz, data = customer)
+#Note: we are not looking at other covariates like 
+summary(regression_model)
+```
